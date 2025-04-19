@@ -1,0 +1,110 @@
+#!/usr/bin/env bash
+
+# Flag to enable or disable debug logging
+DEBUG=false
+
+# Parse command-line options
+# The `getopts` command is used to handle options passed to the script.
+# In this case, the script supports a single option: `-d` (to enable debug mode).
+while getopts "d" opt; do
+    case ${opt} in
+        d )
+            # If the `-d` flag is provided, enable debug mode
+            DEBUG=true
+            ;;
+        \? )
+            # If an invalid option is provided, display usage information and exit
+            echo "Usage: cmd [-d]"
+            exit 1
+            ;;
+    esac
+done
+# Shift positional arguments to remove the processed options
+shift $((OPTIND -1))
+
+# Function to log messages if debug mode is enabled
+log() {
+    if [ "$DEBUG" = true ]; then
+        # Print a timestamped log message
+        echo "[$(date +'%Y-%m-%d %H:%M:%S')] $*"
+    fi
+}
+
+# Function to switch to a tmux session
+switch_to() {
+    log "Switching to session '$1'"
+    if [[ -z $TMUX ]]; then
+        # If not already inside a tmux session, attach to the specified session
+        tmux attach-session -t "$1"
+    else
+        # If already inside a tmux session, switch to the specified session
+        tmux switch-client -t "$1"
+    fi
+}
+
+# Function to check if a tmux session exists
+has_session() {
+    log "Checking if session '$1' exists"
+    # Use `tmux list-sessions` and `grep` to check if the session name exists
+    tmux list-sessions | grep -q "^$1:"
+}
+
+# Function to "hydrate" a tmux session with configuration
+hydrate() {
+    log "Hydrating session '$1' with configuration from '$2'"
+    if [ -f "$2/.tmux-sessionizer" ]; then
+        # If a `.tmux-sessionizer` file exists in the selected directory, source it
+        tmux send-keys -t "$1" "source $2/.tmux-sessionizer" C-m
+    elif [ -f "$HOME/.tmux-sessionizer" ]; then
+        # Otherwise, fall back to sourcing the global `.tmux-sessionizer` file in the home directory
+        tmux send-keys -t "$1" "source $HOME/.tmux-sessionizer" C-m
+    fi
+}
+
+# Main logic starts here
+
+# If exactly one argument is provided, use it as the selected directory
+if [[ $# -eq 1 ]]; then
+    selected="$1"
+else
+    # Otherwise, use `fzf` (a fuzzy finder) to let the user select a directory
+    # The `find` command searches for directories within specific paths
+    selected=$(find ~/documents/ ~/dev/ ~/.local/ ~/work/ ~/.config -mindepth 1 -maxdepth 3 -type d | fzf)
+fi
+
+# If no directory is selected, exit the script
+if [[ -z $selected ]]; then
+    log "No directory selected, exiting"
+    exit 0
+fi
+
+# Log the selected directory
+log "Selected directory: $selected"
+
+# Generate a session name by taking the basename of the directory and replacing spaces with underscores
+selected_name=$(basename "$selected" | tr ' ' '_')
+log "Session name: $selected_name"
+
+# Check if tmux is running by looking for its process
+tmux_running=$(pgrep tmux)
+log "tmux running: $tmux_running"
+
+# If not inside a tmux session and no tmux server is running, create a new session
+if [[ -z $TMUX ]] && [[ -z $tmux_running ]]; then
+    log "No tmux session running, creating new session '$selected_name'"
+    # Create a new tmux session with the selected directory as the working directory
+    tmux new-session -s "$selected_name" -c "$selected"
+    # Hydrate the session with configuration
+    hydrate "$selected_name" "$selected"
+    exit 0
+fi
+
+# If the session does not already exist, create it in a detached state
+if ! has_session "$selected_name"; then
+    log "Session '$selected_name' does not exist, creating new detached session"
+    tmux new-session -ds "$selected_name" -c "$selected"
+    hydrate "$selected_name" "$selected"
+fi
+
+# Finally, switch to the session
+switch_to "$selected_name"
