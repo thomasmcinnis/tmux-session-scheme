@@ -1,5 +1,5 @@
 #!/usr/bin/env gsi-script
-
+;; -*- Scheme -*-
 
 ;;;; Configuration =================================================
 
@@ -19,38 +19,72 @@
 	(display "Arguments:")
 	(newline)
 	(display "    --depth <num>: the number of directory levels to traverse. Default: 1.")
-	(newline))
+	(newline)
+	(exit))
+
 
 ;;;; Functionality =================================================
+
+; Credit "https://cookbook.scheme.org/split-string/"
+(define (string-split char-delimiter? string)
+  (define (maybe-add a b parts)
+    (if (= a b) parts (cons (substring string a b) parts)))
+  (let ((n (string-length string)))
+    (let loop ((a 0) (b 0) (parts '()))
+      (if (< b n)
+          (if (not (char-delimiter? (string-ref string b)))
+              (loop a (+ b 1) parts)
+              (loop (+ b 1) (+ b 1) (maybe-add a b parts)))
+          (reverse (maybe-add a b parts))))))
+
+(define (check-commands cmd-list)
+	(if (not (null? cmd-list))
+			(if (not (equal? (car (shell-command (car cmd-list) #t)) 0))
+					(begin
+						(display (string-append
+											"Error: "
+											(car (string-split char-whitespace? (car cmd-list)))
+											" is required!"))
+						(newline)
+						(newline)
+						(print-usage))
+					(check-commands (cdr cmd-list)))))
+
 
 (define find-args
   (list (string-append (getenv "HOME") "/dev") "-mindepth" "1" "-maxdepth" "1" "-type" "d"))
 
 (define find-config (list path: "find" arguments: find-args))
 
-(define (selection)
+(define (get-selection)
 	(with-output-to-process
 		(list path: "fzf" stdout-redirection: #f)
 		(lambda ()
 			(define find (open-input-process find-config))
 			(let loop ((line (read-line find)))
 				(if (not (eof-object? line))
-					(begin
-						(display line)
-						(newline)
-						(loop (read-line find)))))
+						(begin
+							(display line)
+							(newline)
+							(loop (read-line find)))))
 			(close-port find))))
+
 
 ;;;; Main ==========================================================
 
 ;; TODO:
-;; - handle args (list of paths from users $HOME) or missing paths
-;; - find if the tmux process exists and open a port to it
-;; - check if a tmux session exists which matches the name of the directory
-;; - create a new session if not, or attach if true
-(define (run args)
-; check for find and fzf
-	; define the options from the args with a procedure that extracts the
-	(print-usage))
+;; - [x] check fzf and tmux are installed
+;; - [ ] extract filepaths and any flagged opts from args
+;; - [ ] parse filepaths and conform to string list for find command
+;; - [x] pipe from find->fzf and return the selection
+;; - [ ] get the last el of selected path
+;; - [ ] check if the tmux process exists, create if not,
+;;       and attach to port (?) or save ref (?)
+;; - [ ] check if a tmux session exists which matches the selected path
+;; - [ ] create a new session if not, or attach if true
+;; - [ ] bonus: spin up new session with two tabs: nvim, zsh
+;; - [ ] bonus: allow tmux config passed in to define how to spin up new session
+(define (main)
+	(check-commands '("fzf --version" "tmux -V"))
+	(get-selection))
 
-(run (cdr (command-line)))
