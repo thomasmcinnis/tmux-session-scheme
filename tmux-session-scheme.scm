@@ -5,6 +5,11 @@
 
 ;;;; Errors ========================================================
 
+(define (missing-deps dependency)
+	(display (string-append "Error: " dependency " is required!"))
+	(newline)
+	(exit))
+
 (define (print-usage)
 	(display "tmux-session-scheme")
 	(newline)
@@ -40,14 +45,7 @@
 (define (check-commands cmd-list)
 	(if (not (null? cmd-list))
 			(if (not (equal? (car (shell-command (car cmd-list) #t)) 0))
-					(begin
-						(display (string-append
-											"Error: "
-											(car (string-split char-whitespace? (car cmd-list)))
-											" is required!"))
-						(newline)
-						(newline)
-						(print-usage))
+					(missing-deps (car (string-split char-whitespace? (car cmd-list))))
 					(check-commands (cdr cmd-list)))))
 
 
