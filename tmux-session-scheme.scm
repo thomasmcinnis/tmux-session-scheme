@@ -3,6 +3,8 @@
 
 ;;;; Configuration =================================================
 
+(define version '0.0.1)
+
 ;;;; Errors ========================================================
 
 (define (missing-deps dependency)
@@ -15,7 +17,7 @@
 	(newline)
 	(display "Usage:")
 	(newline)
-	(display "    tmux-session-scheme <file-path> [--depth <num>]")
+	(display "    tmux-session-scheme <directory-path> [--depth <num>]")
 	(newline)
 	(display "Example:")
 	(newline)
@@ -68,12 +70,56 @@
 			(close-port find))))
 
 
+;;; Returns true if the path string points to a valid path, and it is a directory
+(define (directory? path-str)
+	(if (file-exists? path-str)
+			(equal? (file-type path-str) 'directory)
+			#f))
+
+;;; process args return list of sub-lists
+;;; the first is a list of valid directory with trailing slash removed
+;;; the second is (optional) depth level number
+;;; exits is finds help or version flags, or if paths are not valid directories or
+;;; depth value is not a valid number between 1-5
+(define (process-args arguments)
+	(let loop ((args arguments)
+						 (paths '())
+						 (depth ""))
+		(cond ((null? args) ; if there are no args left then return the options list
+					 (list paths depth))
+					 ; if flag -h or --help print usage
+					((or (member "-h" args) (member "--help" args))
+					 (print-usage))
+					; if flag -h or --help print usage
+					((or (member "-v" args) (member "--version" args))
+					 (display version)
+					 (newline)
+					 (exit))
+					; if depth flag get the next arg into the depth element and continue
+					((equal? (car args) "--depth")
+					 ; TODO: find out how to check if NaN... using `nan?` doesn't work as I expect
+					 (if (or (null? (cdr args))
+									 (< (string->number (cadr args)) 1)
+									 (> (string->number (cadr args)) 5))
+							 (print-usage)
+							 (loop (cdr (cdr args))
+										 paths
+										 (cadr args))))
+					; if arg is valid directory path continue loop adding it to paths list
+					((directory? (car args))
+					 (loop (cdr args)
+								 (cons (path-strip-trailing-directory-separator (car args)) paths)
+								 depth))
+					; catch all non-conformant args
+					(else (print-usage)))))
+
+
 ;;;; Main ==========================================================
 
 ;; TODO:
 ;; - [x] check fzf and tmux are installed
-;; - [ ] extract filepaths and any flagged opts from args
-;; - [ ] parse filepaths and conform to string list for find command
+;; - [x] extract filepaths and any flagged opts from args
+;; - [x] parse filepaths and conform to string list for find command
 ;; - [x] pipe from find->fzf and return the selection
 ;; - [ ] get the last el of selected path
 ;; - [ ] check if the tmux process exists, create if not,
@@ -82,7 +128,10 @@
 ;; - [ ] create a new session if not, or attach if true
 ;; - [ ] bonus: spin up new session with two tabs: nvim, zsh
 ;; - [ ] bonus: allow tmux config passed in to define how to spin up new session
-(define (main)
+(define (run arguments)
 	(check-commands '("fzf --version" "tmux -V"))
-	(get-selection))
+	(if (null? arguments)
+		(print-usage))
+	(display (process-args arguments)))
 
+(run (cdr (command-line)))
