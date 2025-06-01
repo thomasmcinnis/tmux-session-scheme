@@ -5,6 +5,9 @@
 
 (define version '0.0.1)
 
+(define MIN-DEPTH '0)
+(define MAX-DEPTH '1)
+
 ;;;; Errors ========================================================
 
 (define (missing-deps dependency)
@@ -51,16 +54,15 @@
 					(check-commands (cdr cmd-list)))))
 
 
-(define find-args
-  (list (string-append (getenv "HOME") "/dev") "-mindepth" "1" "-maxdepth" "1" "-type" "d"))
+(define (find-config args)
+	(list path: "find"
+				arguments: (append (car args) (list "-mindepth" (number->string MIN-DEPTH) "-maxdepth" (cadr args) "-type" "d"))))
 
-(define find-config (list path: "find" arguments: find-args))
-
-(define (get-selection)
+(define (get-selection processed-args)
 	(with-output-to-process
 		(list path: "fzf" stdout-redirection: #f)
 		(lambda ()
-			(define find (open-input-process find-config))
+			(define find (open-input-process (find-config processed-args)))
 			(let loop ((line (read-line find)))
 				(if (not (eof-object? line))
 						(begin
@@ -84,7 +86,7 @@
 (define (process-args arguments)
 	(let loop ((args arguments)
 						 (paths '())
-						 (depth ""))
+						 (depth (number->string MAX-DEPTH)))
 		(cond ((null? args) ; if there are no args left then return the options list
 					 (list paths depth))
 					 ; if flag -h or --help print usage
@@ -132,6 +134,6 @@
 	(check-commands '("fzf --version" "tmux -V"))
 	(if (null? arguments)
 		(print-usage))
-	(display (process-args arguments)))
+	(display (get-selection (process-args arguments))))
 
 (run (cdr (command-line)))
